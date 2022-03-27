@@ -42,7 +42,7 @@ parser.add_option('-w', '--wordlist', dest='word_list_name',
                     help='Wordlist to read from and hash.')
 parser.add_option('-t', '--type', dest='hash_type',
                     action='store', default='all',
-                    metavar='md5|sha224|sha256|sha384|sha512|all')
+                  metavar="|".join(hashlib.algorithms_available))
 (options, args) = parser.parse_args()
 
 
@@ -55,7 +55,7 @@ def create_rainbow_table(db_rainbow):
         db_rainbow.execute('CREATE TABLE rainbow (hash VARCHAR(255) \
                             PRIMARY KEY, word VARCHAR(255));')
     except sqlite3.OperationalError:
-        print 'Table \'rainbow\' already exists!'
+        print('Table \'rainbow\' already exists!')
 
 
 def append_to_table(db_rainbow, word_hashed, word):
@@ -66,34 +66,29 @@ def append_to_table(db_rainbow, word_hashed, word):
                             (hash, word) VALUES (?, ?);',
                             sql_values)
     except sqlite3.IntegrityError:
-        print '%s is already in the database as hash %s' % (word, word_hashed)
+        print('%s is already in the database as hash %s' % (word, word_hashed))
 
 
 def hash_word(word, hash_type):
-    '''Returns hashed word of specified hash type.'''
-    if hash_type == 'md5':
-        return hashlib.md5(word).hexdigest()
-    elif hash_type == 'sha224':
-        return hashlib.sha224(word).hexdigest()
-    elif hash_type == 'sha256':
-        return hashlib.sha256(word).hexdigest()
-    elif hash_type == 'sha384':
-        return hashlib.sha384(word).hexdigest()
-    elif hash_type == 'sha512':
-        return hashlib.sha512(word).hexdigest()
+    newhash = hashlib.new(hash_type)
+    newhash.update(bytes(word,'utf-8'))
+    if( hash_type == 'shake_128' or hash_type == 'shake_256' ):
+        return newhash.hexdigest(32)
     else:
-        return None
-
+        return newhash.hexdigest()
 
 def iterate_wordlist(word_list_name, db_rainbow):
-    hash_types = ['md5', 'sha224', 'sha256', 'sha384', 'sha512']
+    hash_types = hashlib.algorithms_available
     hash_type = options.hash_type
     file_word_list = open(word_list_name, 'r')
     for word in file_word_list:
         if hash_type == 'all':
             for t in hash_types:
                 word_hashed = hash_word(word, t)
-                append_to_table(db_rainbow, word_hashed, word)
+                try:
+                    append_to_table(db_rainbow, word_hashed, word)
+                except TypeError:
+                    print("Probably an error w/ the output for sketch or whatever hash.")
         else:
             word_hashed = hash_word(word, hash_type)
             append_to_table(db_rainbow, word_hashed, word)
